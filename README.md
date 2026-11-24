@@ -15,6 +15,7 @@ X lists bookmarks newest first, so older saves sink out of sight. Resurface puts
 - One post per screen, shown with X's official embed, including images and video when X's embed shows them.
 - A shuffled order that lasts between visits. Resurface saves your place and counts the posts you've passed.
 - Next and Previous buttons, scrolling, and the ← → or K J keys.
+- Later, or the L key, for a post you don't have time for. It moves the post to a random later spot in the shuffle without counting it as viewed.
 - Re-import whenever you like. New bookmarks are mixed into the part of the shuffle you haven't seen, and bookmarks you removed on X drop out.
 - A preview before every import that counts new, kept, and removed bookmarks. Nothing changes until you confirm.
 - Your collection stays in your browser. Resurface has no account, no server, and no analytics.
