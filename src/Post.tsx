@@ -36,7 +36,7 @@ function loadWidgets(): Promise<Twttr> {
   return widgets
 }
 
-export function Post({ id, onNext }: { id: string; onNext?: () => void }) {
+export function Post({ id, onNext, onLater }: { id: string; onNext?: () => void; onLater?: () => void }) {
   const host = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>('loading')
   const [attempt, setAttempt] = useState(0)
@@ -78,6 +78,11 @@ export function Post({ id, onNext }: { id: string; onNext?: () => void }) {
             >
               Retry
             </button>
+            {onLater && (
+              <button type="button" onClick={onLater}>
+                Later
+              </button>
+            )}
             {onNext && (
               <button type="button" onClick={onNext}>
                 Next

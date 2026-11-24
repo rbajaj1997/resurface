@@ -517,7 +517,7 @@ html:has(.reel) {
 
 @media (max-width: 40rem) {
   .panel {
-    padding: 1rem 1rem 22rem;
+    padding: 1rem 1rem 25rem;
   }
 
   .controls {

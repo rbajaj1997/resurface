@@ -15,6 +15,7 @@ Later revisions agreed with Rohit, reflected below:
 - Storage/privacy information and Reset collection moved from the home page to a separate Settings view at `#settings`.
 - The reader has no Open on X control, shows compact `N of M` progress, and labels its import action Import bookmarks.
 - First-party source and config files carry no comments. Explanations live in README.md and this document.
+- The reader has a Later action, also on the `L` key, that moves the current unviewed card to a random later spot in the cycle without marking it viewed. See [LATER.md](LATER.md).
 
 Resurface helps a user revisit forgotten X bookmarks through a shuffled, reel-style reader. It is a static, local-first application with no application backend.
 
@@ -38,7 +39,7 @@ Resurface helps a user revisit forgotten X bookmarks through a shuffled, reel-st
 - IndexedDB persistence of bookmarks, shuffle order, viewed state, and current position.
 - A dark, reel-style reader using official X embedded posts.
 - Native images and video as supported by X's widget.
-- Previous/Next controls, keyboard navigation outside embeds, and scrolling.
+- Previous/Next/Later controls, keyboard navigation outside embeds, and scrolling.
 - A completion screen with an explicit Shuffle again action.
 - Export instructions and import controls on the home page; storage/privacy information and a confirmed Reset collection action in a separate Settings view.
 - Build-time pre-rendered HTML with React hydration.
@@ -47,7 +48,7 @@ Resurface helps a user revisit forgotten X bookmarks through a shuffled, reel-st
 ### Excluded
 
 - X OAuth, automatic synchronization, or modifying bookmarks on X.
-- Search, tags, folders, local favorites, snoozing, or local hiding.
+- Search, tags, folders, local favorites, snoozing beyond the current cycle's Later action, or local hiding.
 - Multiple collections or an account selector.
 - Backup/restore of Resurface state. Re-importing after storage loss is acceptable, even though progress is lost.
 - Custom tweet cards, downloaded media archives, offline X cards, or guaranteed video autoplay.
@@ -222,6 +223,7 @@ A small persisted cycle record can contain ordered IDs, viewed IDs, the current 
 - A timer, embed load, video playback, tab close, or merely seeing a card does not mark it viewed.
 - Moving backward does not mark the departing card viewed and does not undo previously viewed cards.
 - Advancing through an already-viewed card does not count it twice.
+- Later, available only on the first unviewed card while another unviewed card remains, moves that card to a random spot after the next card. It does not mark it viewed or change progress.
 - The current card persists even when it is a revisited card.
 - At the forward end of the sequence, present the completion screen. Do not automatically start another cycle.
 - Shuffle again explicitly creates a fresh cycle from the current collection and resets per-cycle viewed state.
@@ -269,7 +271,7 @@ All wheel, button, and keyboard navigation must use the same transition logic. P
 
 - Show loading UI while the official widget is being requested or rendering.
 - Use a bounded timeout and handle rejected or unresolved widget loading. Do not rely solely on undocumented promise behavior for unavailable posts.
-- On failure, show a neutral message, Retry, and Next.
+- On failure, show a neutral message, Retry, Later when allowed, and Next.
 - A failed render is not proof of deletion. It may be a blocker, network problem, restriction, or unavailable post.
 - Never remove collection membership because an embed fails.
 - Passing a failed card counts as passed for that cycle, with no separate retry queue.

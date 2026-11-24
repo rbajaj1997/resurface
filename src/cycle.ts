@@ -11,6 +11,15 @@ export function previous(state: State): State {
   return state.position > 0 ? { ...state, position: state.position - 1 } : state
 }
 
+export const canLater = ({ order, viewed, position }: State) => position === viewed && position < order.length - 1
+
+export function later(state: State): State {
+  if (!canLater(state)) return state
+  const { order, position } = state
+  const rest = order.filter((_, index) => index !== position)
+  return { ...state, order: [...rest.slice(0, position + 1), ...insertRandomly(rest.slice(position + 1), [order[position]])] }
+}
+
 export function shuffleAgain(state: State): State {
   return { ...state, order: insertRandomly([], state.order), viewed: 0, position: 0 }
 }

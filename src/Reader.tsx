@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
-import { countBookmarks, next, previous, shuffleAgain, type State } from './cycle'
+import { canLater, countBookmarks, later, next, previous, shuffleAgain, type State } from './cycle'
 import { Post } from './Post'
 
 type Props = {
@@ -9,10 +9,11 @@ type Props = {
   onManage: () => void
 }
 
-const KEYS: Record<string, 1 | -1> = { ArrowRight: 1, j: 1, ArrowLeft: -1, k: -1 }
+const KEYS: Record<string, (state: State) => State> = { ArrowRight: next, j: next, ArrowLeft: previous, k: previous, l: later }
 
 export default function Reader({ state, problem, onChange, onManage }: Props) {
   const { order, viewed, position } = state
+  const laterAllowed = canLater(state)
   const reel = useRef<HTMLDivElement>(null)
 
   const align = useCallback(() => {
@@ -55,10 +56,10 @@ export default function Reader({ state, problem, onChange, onManage }: Props) {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const step = KEYS[event.key]
-      if (!step || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return
+      const change = KEYS[event.key]
+      if (!change || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return
       event.preventDefault()
-      go(step > 0 ? next : previous)
+      go(change)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -86,7 +87,11 @@ export default function Reader({ state, problem, onChange, onManage }: Props) {
             ) : index < position ? (
               <p className="note">Previous bookmark</p>
             ) : (
-              <Post id={order[index]} onNext={index === position ? () => go(next) : undefined} />
+              <Post
+                id={order[index]}
+                onNext={index === position ? () => go(next) : undefined}
+                onLater={index === position && laterAllowed ? () => go(later) : undefined}
+              />
             )}
           </section>
         ))}
@@ -109,11 +114,15 @@ export default function Reader({ state, problem, onChange, onManage }: Props) {
             Next
           </button>
         </div>
+        <button type="button" onClick={() => go(later)} disabled={!laterAllowed}>
+          Later
+        </button>
         <button type="button" onClick={onManage}>
           Import bookmarks
         </button>
         <p className="note">
-          Scroll, or press <kbd>←</kbd> <kbd>→</kbd> or <kbd>K</kbd> <kbd>J</kbd> while the post isn't focused.
+          Scroll, or press <kbd>←</kbd> <kbd>→</kbd> or <kbd>K</kbd> <kbd>J</kbd>, or <kbd>L</kbd> for Later, while the post isn't
+          focused.
         </p>
       </nav>
     </main>
