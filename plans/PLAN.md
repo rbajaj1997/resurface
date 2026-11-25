@@ -11,11 +11,12 @@ Stack revision: v1 was first built on Vike. Rohit later approved removing Vike. 
 Later revisions agreed with Rohit, reflected below:
 
 - The exporter runs only on `https://x.com/i/history` with the Bookmarks tab selected. `/i/bookmarks` and `twitter.com` are no longer accepted.
-- Besides the bookmarklet, the user can paste the same compiled exporter script into the DevTools Console.
+- The DevTools Console option was later removed. The bookmarklet, named Send to Resurface, is the only way to run the exporter.
 - Storage/privacy information and Reset collection moved from the home page to a separate Settings view at `#settings`.
 - The reader has no Open on X control, shows compact `N of M` progress, and labels its import action Import bookmarks.
 - First-party source and config files carry no comments. Explanations live in README.md and this document.
 - The reader has a Later action, also on the `L` key, that moves the current unviewed card to a random later spot in the cycle without marking it viewed. See [LATER.md](LATER.md).
+- The exporter hands the snapshot straight to the Resurface tab that opened X. There is no file download and no file import. If the handoff isn't possible, the exporter stops with an error. See Tab handoff below.
 
 Resurface helps a user revisit forgotten X bookmarks through a shuffled, reel-style reader. It is a static, local-first application with no application backend.
 
@@ -33,7 +34,7 @@ Resurface helps a user revisit forgotten X bookmarks through a shuffled, reel-st
 ### Included
 
 - Desktop Chrome, Edge, and Brave.
-- A self-contained exporter that runs in the user's logged-in X tab, started from a bookmarklet or pasted into the DevTools Console.
+- A self-contained exporter that runs in the user's logged-in X tab, started from a bookmarklet.
 - A minimal, versioned Resurface JSON snapshot format.
 - Local JSON import, preview, confirmation, and complete snapshot reconciliation.
 - IndexedDB persistence of bookmarks, shuffle order, viewed state, and current position.
@@ -63,11 +64,10 @@ Resurface helps a user revisit forgotten X bookmarks through a shuffled, reel-st
 ### First use
 
 1. Open Resurface and read the export instructions in build-generated HTML.
-2. Open `https://x.com/i/history` while logged into X and choose the Bookmarks tab, not Likes, and the main list rather than a folder.
-3. Choose an export method. Either drag the Export for Resurface bookmarklet to the bookmarks bar and click it in the X tab, or copy the export script from Resurface and paste it into the DevTools Console of the X tab.
-4. Keep the X tab open while the exporter runs.
-5. Receive a JSON download after a successful export.
-6. Return to Resurface and select the JSON file.
+2. Drag the Send to Resurface bookmarklet to the bookmarks bar, once.
+3. Click Open X bookmarks, which opens `https://x.com/i/history` in a new tab.
+4. Click Send to Resurface in that tab and keep it open while the exporter runs.
+5. The exporter sends the snapshot to the Resurface tab and closes the X tab. Resurface shows the import preview.
 7. Review the import counts and confirm that the export represents the complete collection.
 8. Persist the collection, create a shuffled cycle, and enter the reader.
 
@@ -82,8 +82,8 @@ Closing a tab or browser does not normally discard the collection. This is persi
 
 ### Refreshing bookmarks
 
-1. Run the exporter again on X to generate a fresh snapshot.
-2. Import it into Resurface.
+1. Click Open X bookmarks, then Send to Resurface in the X tab.
+2. Receive the fresh snapshot in Resurface.
 3. Review added, removed, retained, and duplicate counts.
 4. Confirm completeness and apply the replacement of bookmark membership atomically.
 5. Continue the existing cycle under the reconciliation rules below.
@@ -113,9 +113,9 @@ The reference has behaviors we must not inherit:
 
 ### Required behavior
 
-- Provide a draggable `javascript:` bookmarklet and readable source for inspection. Also offer the same script for the DevTools Console, with Copy, View, and Select controls, keyboard instructions for opening the Console, and a warning to paste only code the user has reviewed and trusts.
-- Keep the payload self-contained. Do not inject remotely hosted scripts, import modules, or call Resurface from inside X.
-- Maintain one readable source implementation and derive the bookmarklet payload during the build. The Console script is decoded from that same payload. Do not maintain a separate hand-edited minified copy.
+- Provide a draggable `javascript:` bookmarklet and readable source for inspection.
+- Keep the payload self-contained. Do not inject remotely hosted scripts or import modules. The only contact with Resurface is the snapshot handoff described in Tab handoff.
+- Maintain one readable source implementation and derive the bookmarklet payload during the build.  Do not maintain a separate hand-edited minified copy.
 - Account for React/browser handling of `javascript:` links when presenting the draggable bookmarklet. Never use imported content to construct executable code.
 - Run only on the main X bookmarks page: origin `https://x.com` and path exactly `/i/history`, with an optional trailing slash. Do not run on `/i/bookmarks`, `twitter.com`, or subpaths such as folders or other history tabs. Capture only the Bookmarks GraphQL operation, so Likes or another type of timeline can't be exported as a snapshot.
 - Show a progress indicator and useful error messages in the X tab.
@@ -169,18 +169,31 @@ Use one format shared by the bookmarklet and importer. A proposed v1 contract is
 - No tweet text, user profile, media URLs, cookies, or session credentials are included.
 - Imported strings are data, never HTML or executable source.
 
+### Tab handoff
+
+Resurface links to `https://x.com/i/history` with the named target `resurface-x` and no `noopener`, so the X tab keeps `window.opener`. Live testing showed that this works even though X sends `Cross-Origin-Opener-Policy: same-origin-allow-popups`, probably because X's service worker serves the page without it. X can change that at any time. If it does, the handoff fails with an error, and the next step would be a companion extension.
+
+Before reading any bookmarks:
+
+1. If the X tab has an opener, the exporter posts `{ kind: 'resurface-hello' }` to it, restricted to Resurface's origin.
+2. Resurface answers only messages from `https://x.com`, with `{ kind: 'resurface-ready' }`.
+3. The exporter accepts a reply only from its opener at Resurface's origin. Without one within 2 seconds, it stops with an error and makes no X requests.
+4. After a successful export, it posts the snapshot object to the opener at Resurface's origin and tries to close its own tab.
+5. Resurface validates the snapshot with `parseSnapshot` and shows the normal preview. Nothing changes until the user confirms.
+
+Resurface's origin is fixed at build time from the `site` constant in `vite.config.ts`, or `http://localhost:<port>` under the dev server. The snapshot never goes to any other origin, so a different site that opened an X tab can't receive it. Only the Manage view listens, because that is where the X link lives.
 Keep the contract and its version in one source of truth. The importer can tolerate harmless extra metadata, but must reject unknown schema versions and structurally invalid required fields rather than guessing another format.
 
 ## Import and reconciliation
 
 ### Preparation and confirmation
 
-- Read and validate the entire file before mutating stored state.
+- Read and validate the entire snapshot before mutating stored state.
 - Invalid JSON, unsupported versions, incomplete exports, invalid IDs, count inconsistencies, and malformed records leave existing data untouched.
 - Do not skip malformed records and then reconcile the surviving subset.
 - Deduplicate valid repeated IDs and report duplicates separately.
 - Show the snapshot export time and counts for added, removed, retained, and duplicate records.
-- Require explicit confirmation that the file represents the complete current collection.
+- Require explicit confirmation that the snapshot represents the complete current collection.
 - If a snapshot is older than the last imported snapshot, warn that applying it can restore old membership. Do not imply it is a fresh synchronization.
 - Empty imports and large removals need prominent destructive-change warnings. Require an additional explicit acknowledgement for clearing the collection.
 - Allow cancellation without saving any part of the import.
@@ -239,7 +252,7 @@ A small persisted cycle record can contain ordered IDs, viewed IDs, the current 
 - If the current ID is removed, select the next surviving unviewed ID from the reconciled sequence. If none exists, show completion unless the collection is empty.
 - If a completed cycle receives new IDs, resume with those new IDs only. Retained viewed IDs do not repeat until Shuffle again.
 - Removing an ID discards its cycle state. If a later snapshot adds it again, it is new.
-- If the file has no membership changes, retain the exact queue and current position.
+- If the snapshot has no membership changes, retain the exact queue and current position.
 
 All wheel, button, and keyboard navigation must use the same transition logic. Persist transitions promptly; do not rely on an unload callback to save progress.
 
@@ -331,7 +344,7 @@ Keep the exact file layout modest:
 
 - Public page (`index.html`), browser entry, and app shell with top-level view state.
 - Build-time renderer: the SSR entry and the script that writes its HTML into the built page.
-- Exporter readable source and generated payload (bookmarklet and Console script).
+- Exporter readable source and generated bookmarklet payload.
 - Snapshot contract, parsing, and import preview.
 - Pure membership reconciliation and shuffle transitions.
 - IndexedDB open/upgrade/transaction operations.
@@ -362,7 +375,7 @@ First-party source and config files carry no comments. Prefer descriptive names,
 3. **Implement the snapshot and storage core.** Define the shared format, strict import preparation, IndexedDB state, and atomic membership/cycle reconciliation.
 4. **Implement durable shuffle behavior.** Centralize forward/back transitions, current position, viewed state, new-ID insertion, current-card removal handling, and completion behavior.
 5. **Build the reel reader.** Integrate official X cards, bounded nearby rendering, long-card scrolling, accessible navigation, and failure actions.
-6. **Connect onboarding and management.** Add exporter instructions for both methods, file selection, reconciliation preview, destructive acknowledgements, storage/privacy information, and confirmed reset.
+6. **Connect onboarding and management.** Add bookmarklet instructions, the Open X bookmarks link, reconciliation preview, destructive acknowledgements, storage/privacy information, and confirmed reset.
 7. **Prepare the handoff and deployment files.** Add the README and GitHub Pages workflow without committing, pushing, or deploying without permission.
 
 ## Known limitations and non-promises

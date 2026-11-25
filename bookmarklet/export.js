@@ -1,8 +1,8 @@
 (() => {
   const RUNNING = Symbol.for('resurface.export')
-  if (window[RUNNING]) return alert('Resurface: an export is already running in this tab.')
+  if (window[RUNNING]) return alert('Send to Resurface is already running in this tab.')
   if (location.origin !== 'https://x.com' || !/^\/i\/history\/?$/.test(location.pathname)) {
-    return alert('Resurface: open https://x.com/i/history while logged in, choose the Bookmarks tab (not Likes), then run the exporter again.')
+    return alert('Send to Resurface: in Resurface, click Open X bookmarks, then click Send to Resurface in the X tab that opens.')
   }
   window[RUNNING] = true
 
@@ -11,6 +11,7 @@
   const PAGE_DELAY = 500
   const TERMINAL_DIRECTIONS = ['Bottom', 'TopAndBottom']
   const MAX_EMPTY_PAGES = 10
+  const HANDOFF_TIMEOUT = 2000
 
   const controller = new AbortController()
   const { signal } = controller
@@ -25,7 +26,6 @@
   const cursors = new Set()
   const ids = []
   const seen = new Set()
-  let downloadUrl = null
 
   const panel = document.createElement('div')
   panel.setAttribute('role', 'status')
@@ -35,7 +35,7 @@
     color: '#e7e9ea', font: '14px/1.45 system-ui, sans-serif', boxShadow: '0 8px 24px rgba(0,0,0,.5)',
   })
   const heading = document.createElement('strong')
-  heading.textContent = 'Resurface export'
+  heading.textContent = 'Send to Resurface'
   const message = document.createElement('p')
   message.style.margin = '8px 0 12px'
   const actions = document.createElement('div')
@@ -43,7 +43,7 @@
   panel.append(heading, message, actions)
   document.body.append(panel)
 
-  function show(text, buttons = [['Cancel', closeExporter]], extra) {
+  function show(text, buttons = [['Cancel', closeExporter]]) {
     message.textContent = text
     actions.replaceChildren(...buttons.map(([label, onClick]) => {
       const button = document.createElement('button')
@@ -56,7 +56,6 @@
       })
       return button
     }))
-    if (extra) actions.append(extra)
   }
 
   const countBookmarks = (count) => `${count} ${count === 1 ? 'bookmark' : 'bookmarks'}`
@@ -75,11 +74,11 @@
 
   function capture(method, url, headers) {
     if (request) return
-    let variables = null
+    let variables
     const href = new URL(url, location.href).href
     try { variables = JSON.parse(new URL(href).searchParams.get('variables')) } catch { variables = null }
     if (String(method).toUpperCase() !== 'GET' || typeof variables !== 'object' || variables === null) {
-      throw new Error("X's bookmark request has a format this exporter doesn't support.")
+      throw new Error("X's bookmark request has a format Resurface doesn't support.")
     }
     request = { url: href, headers }
   }
@@ -143,7 +142,7 @@
       for (let waited = 0; !request; waited += 500) {
         if (captureError) throw captureError
         if (waited >= CAPTURE_TIMEOUT) {
-          throw new Error("Couldn't find X's bookmark request. Make sure the Bookmarks tab is open, not Likes. Then reload this page, wait for your bookmarks to appear, and run the exporter again before scrolling.")
+          throw new Error("Couldn't find X's bookmark request. Make sure the Bookmarks tab is open, not Likes. Then reload this page, wait for your bookmarks to appear, and click Send to Resurface again before scrolling.")
         }
         if (waited % 1000 === 0) scrollTo(0, document.documentElement.scrollHeight)
         await sleep(500)
@@ -214,9 +213,12 @@
   async function exportBookmarks() {
     let emptyPages = 0
     try {
+      if (!(await connectToResurface())) {
+        throw new Error('Resurface didn\'t answer. In Resurface, click Open X bookmarks, then use the X tab it opens.')
+      }
       if (!request) await captureRequest()
       for (;;) {
-        show(`Exporting. ${countBookmarks(ids.length)} so far. Keep this tab open.`)
+        show(`Reading bookmarks. ${countBookmarks(ids.length)} so far. Keep this tab open.`)
         const page = readPage(await fetchPage())
         const before = ids.length
         for (const id of page.ids) {
@@ -238,40 +240,54 @@
         await sleep(PAGE_DELAY)
       }
       request = null
-      downloadSnapshot()
+      sendToResurface()
     } catch (error) {
       request = null
       if (signal.aborted) return
-      show(`Export stopped. ${error?.message ?? String(error)} No file was saved.`, [['Retry', exportBookmarks], ['Cancel', closeExporter]])
+      show(`Stopped. ${error?.message ?? String(error)} Nothing was sent.`, [['Retry', exportBookmarks], ['Cancel', closeExporter]])
     }
   }
 
-  function downloadSnapshot() {
-    const exportedAt = new Date().toISOString()
-    const snapshot = {
+  function connectToResurface() {
+    const resurface = window.opener
+    if (!resurface) return Promise.resolve(false)
+    show('Connecting to Resurface…')
+    return new Promise((resolve) => {
+      const finish = (connected) => {
+        clearTimeout(timer)
+        removeEventListener('message', onMessage)
+        signal.removeEventListener('abort', onTimeout)
+        resolve(connected)
+      }
+      const onMessage = (event) => {
+        if (event.source === resurface && event.origin === RESURFACE_ORIGIN && event.data?.kind === HANDOFF_READY) finish(true)
+      }
+      const onTimeout = () => finish(false)
+      const timer = setTimeout(onTimeout, HANDOFF_TIMEOUT)
+      addEventListener('message', onMessage)
+      signal.addEventListener('abort', onTimeout, { once: true })
+      resurface.postMessage({ kind: HANDOFF_HELLO }, RESURFACE_ORIGIN)
+    })
+  }
+
+  function sendToResurface() {
+    if (!window.opener) throw new Error('The Resurface tab was closed. Open X bookmarks from Resurface again.')
+    window.opener.postMessage({
       kind: SNAPSHOT_KIND,
       version: SNAPSHOT_VERSION,
-      exportedAt,
+      exportedAt: new Date().toISOString(),
       status: 'complete',
       count: ids.length,
       bookmarks: ids.map((id) => ({ id })),
-    }
-    downloadUrl = URL.createObjectURL(new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' }))
-    const name = `resurface-bookmarks-${exportedAt.slice(0, 10)}.json`
-    const link = document.createElement('a')
-    link.href = downloadUrl
-    link.download = name
-    link.textContent = 'Download again'
-    link.style.color = '#1d9bf0'
-    show(`Exported ${countBookmarks(ids.length)} to ${name}. That is every bookmark X returned, which may not be your full history. Import the file in Resurface.`, [['Close', closeExporter]], link)
-    link.click()
+    }, RESURFACE_ORIGIN)
+    show(`Sent ${countBookmarks(ids.length)} to Resurface. Close this tab and review them there.`, [['Close tab', () => { closeExporter(); window.close() }]])
+    window.close()
   }
 
   function closeExporter() {
     controller.abort()
     restoreRequestHooks()
     request = null
-    if (downloadUrl) URL.revokeObjectURL(downloadUrl)
     panel.remove()
     delete window[RUNNING]
   }
