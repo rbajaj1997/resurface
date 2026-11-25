@@ -18,7 +18,14 @@ export default defineConfig([
     files: ['bookmarklet/**/*.js'],
     languageOptions: {
       sourceType: 'script',
-      globals: { ...globals.browser, SNAPSHOT_KIND: 'readonly', SNAPSHOT_VERSION: 'readonly' },
+      globals: {
+        ...globals.browser,
+        SNAPSHOT_KIND: 'readonly',
+        SNAPSHOT_VERSION: 'readonly',
+        HANDOFF_HELLO: 'readonly',
+        HANDOFF_READY: 'readonly',
+        RESURFACE_ORIGIN: 'readonly',
+      },
     },
   },
   {
